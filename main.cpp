@@ -32,7 +32,6 @@ void printMatrix(Matrix matrix, int rows, int cols){
 }
 
 void dumpMatrix(string filepath, Matrix& solution, int rows, int cols, double dt, double dx, bool bin=false){
-	cout << "dumpMatrix started" << endl;
 	// output binary file (sort of*) readable by gnuplot
 	// * skip first ?? bytes
 	ofstream file;
@@ -40,10 +39,10 @@ void dumpMatrix(string filepath, Matrix& solution, int rows, int cols, double dt
 		double t, x, T;
 		file.open(filepath, ios::binary);
 
-		//// no. of records
-		//file.write(reinterpret_cast<const char*>(&rows), sizeof(int));
-		//// no. of points per record
-		//file.write(reinterpret_cast<const char*>(&cols), sizeof(int));
+		// no. of records
+		file.write(reinterpret_cast<const char*>(&rows), sizeof(int));
+		// no. of points per record
+		file.write(reinterpret_cast<const char*>(&cols), sizeof(int));
 
 		for (int j=0; j<rows; j++){
 			//file.write(reinterpret_cast<const char*>(&cols), sizeof(static_cast<int32_t>(cols)));
@@ -68,7 +67,6 @@ void dumpMatrix(string filepath, Matrix& solution, int rows, int cols, double dt
 		}
 	}
 	file.close();
-	cout << "dumpMatrix ended" << endl;
 }
 
 void dumpVector(string filepath, Vector& vector, int size, double dt, double dx) {
@@ -79,7 +77,6 @@ void dumpVector(string filepath, Vector& vector, int size, double dt, double dx)
 }
 
 void Heat1D(Matrix& solution, double dx, int noCells, double noSteps, double timestep, double diffCoef, double tempTop, double tempBottom, Vector tempInit) {
-	cout << "Heat1D started" << endl;
 	// assumes solution and tempInit have the right dimensions (noCells x noSteps and noCells respectively)!
 	double c = diffCoef * timestep / (dx * dx);
 	solution[0][noCells-1] = tempBottom;
@@ -94,7 +91,6 @@ void Heat1D(Matrix& solution, double dx, int noCells, double noSteps, double tim
 			solution[j][i] = solution[j-1][i] + diffCoef*(solution[j-1][i+1] - 2*solution[j-1][i] + solution[j-1][i-1])*timestep/dx/dx;
 		}
 	}
-	cout << "Heat1D ended" << endl;
 }
 
 double findLambda(double dT, double latentHeat, double heatCap, double initGuess) {
@@ -103,7 +99,6 @@ double findLambda(double dT, double latentHeat, double heatCap, double initGuess
 	int i = 0;
 
 	double lambda = initGuess, lambda_old = lambda + TOL;
-	cout << "finding lambda..." << endl;
 	/*// use fixed-point iteration
 	while (abs(lambda-lambda_old)>TOL) {
 		lambda_old = lambda;
@@ -137,14 +132,11 @@ double findLambda(double dT, double latentHeat, double heatCap, double initGuess
 }
 
 void StefanAnal(Matrix& solution, Vector& ym, int N, int T, double dx, double dt, double Ttop, double deltaT, double thermCond, double heatCap, double density, double latentHeat) {
-	cout << "StefAnal started" << endl;
 	double lambda = findLambda(deltaT, latentHeat, heatCap, 0.3);
 	double erflm = erf(lambda);
 	double thermDiff = thermCond/density/heatCap;
 	double eta;
 	ym[0] = 0.0;
-
-	cout << "lambda=" << lambda << "; erf(lambda)=" << erflm << endl;
 
 	for (int i=0; i<N; i++) solution[0][i] = Ttop + deltaT;
 	for (int j=1; j<T; j++){
@@ -158,7 +150,6 @@ void StefanAnal(Matrix& solution, Vector& ym, int N, int T, double dx, double dt
 			else solution[j][i] = Ttop + deltaT;
 		}
 	}
-	cout << "StefAnal ended" << endl;
 }
 
 void solidifBound(Vector& ym, int T, double dt, double deltaT, double thermCond, double heatCap, double density, double latentHeat){
@@ -182,7 +173,7 @@ int main(){
 
 	const double dt = 0.1; // s; temporal discretisation
 	const double height = 0.05; // m
-	const int T = 8640;//000; // max time, non-dimensional
+	const int T = 100;//8640000 s = 10 days; max time, non-dimensional
 	const int N = 100; // spatial discretisation degree
 
 	double dx = height / (N-1);
@@ -195,14 +186,14 @@ int main(){
 	/* Create linear initial temperature profile */
 	//double dT = 20.0/(N-1);
 	//for (int i=0;i<N;i++) Tini[i] = 253.15 + i*dT;
+
 	Tini[0] = Ttop;
 	//printVector(Tini,N);
 
-	/* Solve stuff */
-	cout << "Solve stuff..." << endl;
+	// create threads to solve stuff
 	auto thrHEq1D = async(launch::async, Heat1D, ref(solution),dx,N,T,dt,k/(rho*c), Ttop, Tbot, Tini);
 	auto thrStefAn = async(launch::async, StefanAnal,ref(solutionAnal), ref(ym), N, T, dx, dt, Ttop, Tbot-Ttop, k, c, rho, L);
-
+	// once computed, start saving to file
 	auto thrHEq1DWrite = async(launch::async, [&]() {
 			thrHEq1D.get();
 			dumpMatrix("data.dat", ref(solution), T, N, dt, dx, true);
@@ -212,23 +203,4 @@ int main(){
 			dumpMatrix("anal.dat", ref(solutionAnal), T, N, dt, dx, true);
 			dumpVector("ym.dat", ym, T, dt, dx);
 			});
-
-
-	// thread thrhe1d(Heat1D, ref(solution),dx,N,T,dt,k/(rho*c), Ttop, Tbot, Tini);
-	// thread thrStefAn(StefanAnal,ref(solutionAnal), ref(ym), N, T, dx, dt, Ttop, Tbot-Ttop, k, c, rho, L);
-	// thrhe1d.join();
-	// thrStefAn.join();
-
-	/* Save stuff */
-	//solidifBound(ym, T, dt, Tbot-Ttop, k, c, rho, L);
-	// cout << "write data..." << endl;
-	// thread thrhe1dWrite(dumpMatrix, "data.dat", ref(solution), T, N, dt, dx, true);
-	// thread thrStefAnWrite(dumpMatrix, "anal.dat", ref(solution), T, N, dt, dx, true);
-	// //thread thrStefAnWrite(dumpMatrix, ref(solutionAnal), T, N, dt, dx, true);
-	// thrhe1dWrite.join();
-	// thrStefAnWrite.join();
-	//dumpMatrix("data.dat", solution, T, N, dt, dx, true);
-	//dumpMatrix("anal.dat", solutionAnal, T, N, dt, dx, true);
-	cout << "dump ym..." << endl;
-	dumpVector("ym.dat", ym, T, dt, dx);
 }
