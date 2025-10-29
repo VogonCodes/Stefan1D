@@ -5,3 +5,5 @@ main
 *.out
 *.py
 *.pdf
+*_old*
+old/*

@@ -2,48 +2,17 @@ set term pngcairo
 set xrange [250:275]
 
 set output 'plot.png'
-set palette rgb 33,13,10
-set key off
+#set key off
+set key left bottom
 
-set cblabel "t (s)"
 set xlabel "T (K)"
 set ylabel "y"
 show xlabel
 show ylabel
-show cblabel
+set yrange reverse
 
+plot 'numSol.dat' u 2:1, 'analSol.dat' u 2:1, 'initialCond.dat' u 2:1
 
-noRecords = int(system("od -An -t d4 -N4 data.dat"))
-recordSize = int(system("od -An -t d4 -j4 -N4 data.dat"))
-cmd = sprintf("plot 'data.dat' binary skip=8 record=%dx%d format='%%double%%double%%double' using 2:(-$1):3 with lines lc palette", recordSize, noRecords)
-eval(cmd)
-
-
-set output 'stefan.png'
-set palette rgb 33,13,10
-set key off
-
-set cblabel "t (s)"
-set xlabel "T (K)"
-set ylabel "y"
-show xlabel
-show ylabel
-show cblabel
-
-# these should be the same here as for the numerical solution data, but get them again, just to be sure...
-noRecords = int(system("od -An -t d4 -N4 anal.dat"))
-recordSize = int(system("od -An -t d4 -j4 -N4 anal.dat"))
-
-#plot 'anal.dat' binary record=100x8640 format="%double%double%double" using 2:(-$1):3 with lines lc palette
-cmd = sprintf("plot 'anal.dat' binary skip=8 record=%dx%d format='%%double%%double%%double' using 2:(-$1):3 with lines lc palette", recordSize, noRecords)
-eval(cmd)
-
-
-set output 'ym.png'
-set xrange[0:1000]
-set xlabel "t (s)"
-plot 'ym.dat' using 3:1
-
-
+unset output
 
 set term x11
