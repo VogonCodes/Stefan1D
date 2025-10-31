@@ -1,5 +1,5 @@
 set term pngcairo
-set xrange [250:275]
+#set xrange [250:275]
 
 set output 'plot.png'
 #set key off
@@ -11,8 +11,13 @@ show xlabel
 show ylabel
 set yrange reverse
 
-plot 'numSol.dat' u 2:1, 'analSol.dat' u 2:1, 'initialCond.dat' u 2:1
+plot 'numSol.dat' u 2:1 w lp, 'analSol.dat' u 2:1, 'initialCond.dat' u 2:1
 
 unset output
+set output 'plot2.png'
+#set key off
+
+file(n) = sprintf("tmp/dataset_%d.dat", n)
+plot for [i=1:4998:1000] file(i) u 2:1 w l title sprintf("%d", i)
 
 set term x11
