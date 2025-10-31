@@ -95,20 +95,21 @@ void StefanAnal1D(Vector& solution, size_t size, double dx, double time, double 
 	}
 }
 
-void StefanProblem1D(Vector& numSol, Vector& analSol, Vector Tinit, size_t& numSolSize, size_t& analSolSize, double maxTime, double& dt, double& dx, double ymInit, double lambda) {
+void StefanProblem1D(Vector& numSol, Vector& analSol, Vector Tinit, size_t& numSolSize, size_t& analSolSize, double maxTime, double& dt, double& dx, double ymInit, double lambdaAnal) {
 	double time = dt;
 	double ym = ymInit, ymOld = ymInit;
 	double kappa = k/rho/c;
 	double maxdx = 0.005;
 	double dxOld = dx;
 	double CFL = 0.5;
+	//double lambda = ymInit / 2 / sqrt(kappa * time);
+	double lambda = lambdaAnal;
 
 	Vector oldSol(numSolSize);
 	Vector tmp;
 	int numSolSizeOld = numSolSize;
 	oldSol = Tinit;
 	numSol = Tinit;
-	cout << "ymInit=" << ym << endl;
 
 	// Numerical solution + solidification interface depth
 	int j = 0;
@@ -121,6 +122,7 @@ void StefanProblem1D(Vector& numSol, Vector& analSol, Vector Tinit, size_t& numS
 
 		// update solidification interface depth
 		ym = ymOld + lambda * sqrt(kappa/time)*dt;
+		//lambda = ym / 2 / sqrt(kappa * time);
 
 		/* update grid :( */
 
@@ -134,19 +136,18 @@ void StefanProblem1D(Vector& numSol, Vector& analSol, Vector Tinit, size_t& numS
 		tmp[0] = Ttop;
 		// linear interpolation to new grid
 		for (int i=1; i<numSolSize-1; i++) {
-		cout << numSolSizeOld << ", " << numSolSize << endl;
 			double xtilde = i*dx;
-			if (xtilde < TOL) tmp[i] = oldSol[i];
+			if (xtilde/dxOld < TOL) tmp[i] = oldSol[i];
 			else {
 				int ix0 = static_cast<int>(xtilde/dxOld);
-				int ix1 = ix0 + 1;
-				if (ix1 >= (numSolSizeOld-1)) ix1 = numSolSizeOld - 1;
-				cout << ix0 << " " << ix1 << endl;
-				// Ttilde = (T0*(x1 - xtilde) + T1*(xtilde - x0)) / (x1 - x0)
-				//cout << i << ": " <<  xtilde << "; " << ix0 << ": " << ix0*xtilde << "; " << ix1 << ": " << ix1*xtilde << "; " << numSolSize << endl;
-				tmp[i] = (oldSol[ix0]*(ix1*dxOld - xtilde) + oldSol[ix1]*(xtilde - ix0*dxOld)) / ((ix1-ix0)*dxOld);
+				if (ix0 >= (numSolSizeOld - 1)) tmp[i] = 273.15;
+				else {
+					int ix1 = ix0 + 1;
+					if (ix1 >= (numSolSizeOld-1)) ix1 = numSolSizeOld - 1;
+					// Ttilde = (T0*(x1 - xtilde) + T1*(xtilde - x0)) / (x1 - x0)
+					tmp[i] = (oldSol[ix0]*(ix1*dxOld - xtilde) + oldSol[ix1]*(xtilde - ix0*dxOld)) / ((ix1-ix0)*dxOld);
+				}
 			}
-
 		}
 		oldSol.resize(numSolSize);
 		numSol.resize(numSolSize);
@@ -158,22 +159,15 @@ void StefanProblem1D(Vector& numSol, Vector& analSol, Vector Tinit, size_t& numS
 		dumpTempVector("tmp/dataset_"+to_string(j)+".dat", numSol, numSolSize, dx);
 		// CFL condition
 		if (dt > dx*dx/2/kappa) dt = dx*dx/2/kappa;
-
-		cout << time;
-		
 		time += dt;
 		j++;
 	}
-	cout << "ymEnd=" << ym << endl;
 
-	cout << time << " ";
-	cout << lambda << " " << ym/2/sqrt(kappa* time) << endl;
 	// Analytical solution
 	double dT = Tmelt-Ttop;
 	analSol.resize(numSolSize);
 	analSolSize = numSolSize;
-	double eta;
-	double etam = ym / 2 / sqrt(kappa*time);
+	double eta, etam = ym / 2 / sqrt(kappa*time);
 	//StefanAnal1D(analSol, analSolSize, dx, time, ym/2/kappa*time);
 	for (int i=0; i<numSolSize; i++) {
 		// for y<ym: theta = erf(eta)/erf(lambda) -> T = T0 + (Tm-T0)*erf(y/(2*sqrt(kappa*t)))/erf(lambda)
@@ -192,16 +186,14 @@ int main() {
 	Vector solution(N,0.0), solAn;
 	// Linear initial condition
 	Vector Tinit(N, 273.15);
-	for (int i=0; i<N-1; i++) Tinit[i] = Ttop + i*(Tmelt-Ttop)/(N-1);
+	//for (int i=0; i<N-1; i++) Tinit[i] = Ttop + i*(Tmelt-Ttop)/(N-1);
 	//StefanAnal1D(Tinit, N, dxInit, dt, ymInit);
 	// double lambda = findLambda(20.0, L, c, 0.3, 1e-15);
-	// for (int i=0;i<N-1; i++) Tinit[i] = Ttop + 20.0*erf(i*dx*sqrt(k/rho/c * dt))/erf(lambda);
-	cout << dt;
+	for (int i=0;i<N-1; i++) Tinit[i] = Ttop + (Tmelt - Ttop)*erf(i*dx*sqrt(k/rho/c * dt))/erf(lambda);
 
 	dumpTempVector("initialCond.dat", Tinit, N, dx);
 
-	StefanProblem1D(solution, solAn, Tinit, N, M, 500.0, dt, dx, ymInit, lambda);
-	cout << dt << endl;
+	StefanProblem1D(solution, solAn, Tinit, N, M, 1000.0, dt, dx, ymInit, lambda);
 	printVector(solAn,M);
 	printVector(solution, N);
 	dumpTempVector("numSol.dat", solution, N, dx);
