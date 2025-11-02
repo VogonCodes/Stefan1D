@@ -104,6 +104,7 @@ void StefanProblem1D(Vector& numSol, Vector& analSol, Vector Tinit, size_t& numS
 	double CFL = 0.5;
 	//double lambda = ymInit / 2 / sqrt(kappa * time);
 	double lambda = lambdaAnal;
+	double TOL = 1e-14;
 
 	Vector oldSol(numSolSize);
 	Vector tmp;
@@ -111,8 +112,10 @@ void StefanProblem1D(Vector& numSol, Vector& analSol, Vector Tinit, size_t& numS
 	oldSol = Tinit;
 	numSol = Tinit;
 
+
 	// Numerical solution + solidification interface depth
 	int j = 0;
+	lambda = ym / 2 / sqrt(kappa * time);
 	while (time < maxTime) {
 		// update old values
 		ymOld = ym;
@@ -120,13 +123,14 @@ void StefanProblem1D(Vector& numSol, Vector& analSol, Vector Tinit, size_t& numS
 		dxOld = dx;
 		numSolSizeOld = numSolSize;
 
+		// CFL condition
+		if (dt > dx*dx/2/kappa) dt = dx*dx/2/kappa;
+
 		// update solidification interface depth
 		ym = ymOld + lambda * sqrt(kappa/time)*dt;
-		//lambda = ym / 2 / sqrt(kappa * time);
+		lambda = ym / 2 / sqrt(kappa * time);
 
 		/* update grid :( */
-
-		double TOL = 1e-14;
 		if (ym/numSolSize > maxdx) numSolSize++;
 		// update spatial step -- equidistant grid
 		dx = ym/numSolSize;
@@ -155,10 +159,10 @@ void StefanProblem1D(Vector& numSol, Vector& analSol, Vector Tinit, size_t& numS
 
 
 		// solve HEq for current time
-		forwardEuler2(numSol, oldSol, numSolSize, kappa*dt/dx/dx);
 		dumpTempVector("tmp/dataset_"+to_string(j)+".dat", numSol, numSolSize, dx);
-		// CFL condition
-		if (dt > dx*dx/2/kappa) dt = dx*dx/2/kappa;
+		forwardEuler2(numSol, oldSol, numSolSize, kappa*dt/dx/dx);
+
+		// update time
 		time += dt;
 		j++;
 	}
@@ -168,12 +172,12 @@ void StefanProblem1D(Vector& numSol, Vector& analSol, Vector Tinit, size_t& numS
 	analSol.resize(numSolSize);
 	analSolSize = numSolSize;
 	double eta, etam = ym / 2 / sqrt(kappa*time);
-	//StefanAnal1D(analSol, analSolSize, dx, time, ym/2/kappa*time);
-	for (int i=0; i<numSolSize; i++) {
-		// for y<ym: theta = erf(eta)/erf(lambda) -> T = T0 + (Tm-T0)*erf(y/(2*sqrt(kappa*t)))/erf(lambda)
-		eta = i*dx / 2 / sqrt(kappa*time);
-		analSol[i] = Ttop + dT*erf(eta)/erf(etam);
-	}
+	StefanAnal1D(analSol, analSolSize, dx, time, ym/2/kappa*time);
+	// for (int i=0; i<numSolSize; i++) {
+	// 	// for y<ym: theta = erf(eta)/erf(lambda) -> T = T0 + (Tm-T0)*erf(y/(2*sqrt(kappa*t)))/erf(lambda)
+	// 	eta = i*dx / 2 / sqrt(kappa*time);
+	// 	analSol[i] = Ttop + dT*erf(eta)/erf(etam);
+	// }
 }
 
 int main() {
@@ -189,7 +193,8 @@ int main() {
 	//for (int i=0; i<N-1; i++) Tinit[i] = Ttop + i*(Tmelt-Ttop)/(N-1);
 	//StefanAnal1D(Tinit, N, dxInit, dt, ymInit);
 	// double lambda = findLambda(20.0, L, c, 0.3, 1e-15);
-	for (int i=0;i<N-1; i++) Tinit[i] = Ttop + (Tmelt - Ttop)*erf(i*dx*sqrt(k/rho/c * dt))/erf(lambda);
+	StefanAnal1D(Tinit, N, dx, dt, lambda);
+	//for (int i=0;i<N-1; i++) Tinit[i] = Ttop + (Tmelt - Ttop)*erf(i*dx*sqrt(k/rho/c * dt))/erf(lambda);
 
 	dumpTempVector("initialCond.dat", Tinit, N, dx);
 
