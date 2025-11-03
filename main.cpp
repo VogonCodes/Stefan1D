@@ -107,132 +107,57 @@ void StefanAnal1D(Vector& solution, size_t size, double dx, double ym, double ti
 	}
 }
 
-bool updateGrid(Vector& solution, size_t& numSolSize, double ymCurrent, double& dx, double maxdx) {
-	size_t numSolSizeOld = numSolSize;
-	double dxOld = dx;
-	double TOL = 1e-14;
-	Vector tmp;
-
-	if (ymCurrent/numSolSize > maxdx) numSolSize++;
-	// update spatial step -- equidistant grid
-	dx = ymCurrent/numSolSize;
-	// resize the vector
-	tmp.resize(numSolSize);
-	tmp[numSolSize-1] = Tmelt;
-	tmp[0] = Ttop;
-	// linear interpolation to new grid
-	for (int i=1; i<numSolSize-1; i++) {
-		double xtilde = i*dx;
-		if (xtilde/dxOld < TOL) tmp[i] = solution[i];
-		else {
-			int ix0 = static_cast<int>(xtilde/dxOld);
-			if (ix0 >= (numSolSizeOld - 1)) tmp[i] = 273.15;
-			else {
-				int ix1 = ix0 + 1;
-				if (ix1 >= (numSolSizeOld-1)) ix1 = numSolSizeOld - 1;
-				// Ttilde = (T0*(x1 - xtilde) + T1*(xtilde - x0)) / (x1 - x0)
-				tmp[i] = (solution[ix0]*(ix1*dxOld - xtilde) + solution[ix1]*(xtilde - ix0*dxOld)) / ((ix1-ix0)*dxOld);
-			}
-		}
-	}
-	solution.resize(numSolSize);
-	for (int i=0; i<numSolSize; i++) solution[i] = tmp[i];
-
-	if (numSolSizeOld != numSolSize) return true;
-	return false;
-}
-
-void solidify(Matrix& ymNumeric, Matrix& ymAnal, size_t& ymSize, double lambdaAnal, double time, double dt) {
-	double ym = ymNumeric[ymSize-1][1];
-	double lambda = ym / 2 / sqrt(kappa * time);
-
-	ymNumeric.push_back(Vector(2));
-	ymAnal.push_back(Vector(2));
-	ymNumeric[ymSize][0] = time;
-	ymNumeric[ymSize][1] = ym + lambda * sqrt(kappa/time)*dt;
-	ymAnal[ymSize][0] = time;
-	ymAnal[ymSize][1] = ymAnal[ymSize-1][1]+lambdaAnal*sqrt(kappa/time)*dt;
-	ymSize++;
-}
-
-void StefanProblem1D(Vector& numSol, Vector& analSol, Vector Tinit, size_t& numSolSize, size_t& analSolSize, Matrix& ymNumeric, Matrix& ymAnal, size_t& ymSize, double maxTime, double& time, double& dx) {
+void HeatEq1D(Vector& numSol, Vector Tinit, size_t numSolSize, double maxTime, double& time, double dx) {
 	double dt = dx*dx/2/kappa;
-	double maxdx = 0.001; // TODO
-	double TOL = 1e-14;
-	double lambda = ymNumeric[ymSize-1][1] / 2 / sqrt(kappa * time);
-	double lambdaAnal = findLambda(Tmelt-Ttop, L, c, 0.5, 1e-15);
-
 	Vector oldSol(numSolSize);
 	oldSol = Tinit;
 	numSol = Tinit;
 
-	// Numerical solution + solidification interface depth
+	while ((time+dt) >= maxTime) dt /= 10;
+
 	time += dt;
-	int j = static_cast<int>(ymSize);
+	int j=0;
 	while (time < maxTime) {
 		// update old values
 		oldSol = numSol;
-
-		// update timestep
-		// if (dt > dx*dx/2/kappa) dt = dx*dx/2/kappa;
-		dt = dx*dx/2/kappa;
-
-		// update solidification interface depth
-		solidify(ymNumeric, ymAnal, ymSize, lambdaAnal, time, dt);
-
-		/* update grid :( */
-		if (updateGrid(oldSol,numSolSize, ymNumeric[ymSize-1][1], dx, maxdx)) numSol.resize(numSolSize);
 
 		// solve HEq for current time
 		//dumpTempVector("tmp/dataset_"+to_string(j)+".dat", numSol, numSolSize, dx);
 		centralDifferences(numSol, oldSol, numSolSize, kappa*dt/dx/dx);
 
+		dumpTempVector("tmp/dataset_"+to_string(j)+".dat", numSol, numSolSize, dx);
+
 		// update time
 		time += dt;
 		j++;
 	}
-
-	// Analytical solution
-	analSol.resize(numSolSize);
-	analSolSize = numSolSize;
-
-	cout << lambda << endl;
-	cout << ymAnal[ymSize-1][1] << "," << dx << endl;
-	StefanAnal1D(analSol, analSolSize, dx, ymAnal[ymSize-1][1], time, lambdaAnal);
+	cout << j << endl;
 }
 
 int main() {
-	size_t N = 3;
+	size_t N = 100;
 	size_t M = 0;
-	double dx = 0.0001;
+	double dx = 0.01;
 
-	double lambda = findLambda(Tmelt-Ttop, L, c, 0.5, 1e-15);
-	double time = N*dx*N*dx/4/lambda/lambda/(kappa);;
+	double time = 0.0;
 
 	Vector solution(N,0.0), solAn(M);
 	// Initial temperature field
-	Vector Tinit(N, 273.15);
+	Vector Tinit(N, Tmelt);
+	Tinit[0] = Ttop;
 	// /// Linear initial condition
 	// for (int i=0; i<N-1; i++) Tinit[i] = Ttop + i*(Tmelt-Ttop)/(N-1);
 	/// erf initial temp
-	StefanAnal1D(Tinit, N, dx, N*dx, time, lambda);
-
-	size_t ymSize = 1;
-	Matrix ym(ymSize,Vector(2, 0.0));
-	Matrix ymAnal(ymSize,Vector(2, 0.0));
-	ym[0][0] = time;
-	ym[0][1] = N*dx;
-	ymAnal[0][0] = time;
-	//ymAnal[0][1] = lambda*sqrt(kappa/time)*time; // toto neni hezke
-	ymAnal[0][1] = N*dx; // toto take neni hezke
+	// double lambda = findLambda(Tmelt-Ttop, L, c, 0.5, 1e-15);
+	// double time = N*dx*N*dx/4/lambda/lambda/(kappa);;
+	// StefanAnal1D(Tinit, N, dx, N*dx, time, lambda);
 
 	dumpTempVector("initialCond.dat", Tinit, N, dx);
 
-	StefanProblem1D(solution, solAn, Tinit, N, M, ym, ymAnal, ymSize, 1000.0, time, dx);
-	printVector(solAn,M);
+	cout << time << endl;
+	HeatEq1D(solution, Tinit, N, 5000.0, time, dx);
+	//printVector(solAn,M);
 	printVector(solution, N);
 	dumpTempVector("numSol.dat", solution, N, dx);
-	dumpTempVector("analSol.dat", solAn, N, dx);
-	dumpMatrix("ym.dat", ym, ymSize, 2);
-	dumpMatrix("ymAnal.dat", ymAnal, ymSize, 2);
+	//dumpTempVector("analSol.dat", solAn, N, dx);
 }

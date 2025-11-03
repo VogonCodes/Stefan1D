@@ -1,5 +1,4 @@
 set term pngcairo
-#set xrange [250:275]
 
 set output 'plot.png'
 #set key off
@@ -11,26 +10,16 @@ show xlabel
 show ylabel
 set yrange reverse
 
-plot 'numSol.dat' u 2:1 w lp, 'analSol.dat' u 2:1, 'initialCond.dat' u 2:1
+#plot 'numSol.dat' u 2:1 w lp, 'analSol.dat' u 2:1, 'initialCond.dat' u 2:1
+plot 'numSol.dat' u 2:1 w l title "numerical solution", 'initialCond.dat' u 2:1 w l title "initial condition"
 
 unset output
-#set output 'plot2.png'
-#set key off
+set output "timeseries.png"
+set key off
+file(n) = sprintf("tmp/dataset_%d.dat", n)
 
-#file(n) = sprintf("tmp/dataset_%d.dat", n)
-#plot for [i=0:4998:500] file(i) u 2:1 w l title sprintf("%d", i)
-#plot for [i=0:10] file(i) u 2:1 w l title sprintf("%d", i)
-
-#unset output
-
-set output 'solidif_bound.png'
-
-unset yrange
-unset xrange
-set xlabel 't (s)'
-set ylabel 'ym (m)'
-plot 'ym.dat' w l lw 2, 'ymAnal.dat' w l
-
-unset output
+maxNum = int(word(system("exec ls tmp/ | sed 's/.*_\\([0-9]\\+\\).dat/\\1/g' | sort -n | tail -1"),1))
+print sprintf("maxNum = %d", maxNum)
+plot for [i=0:maxNum-1:10] file(i) u 2:1 w l, file(maxNum) u 2:1 w l
 
 set term x11
