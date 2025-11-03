@@ -204,26 +204,27 @@ void StefanProblem1D(Vector& numSol, Vector& analSol, Vector Tinit, size_t& numS
 int main() {
 	size_t N = 3;
 	size_t M = 0;
-	size_t ymSize = 1;
 	double dx = 0.0001;
-	double ymInit = N*dx;
+
 	double lambda = findLambda(Tmelt-Ttop, L, c, 0.5, 1e-15);
-	double time = ymInit*ymInit/4/lambda/lambda/(kappa);;
-	Vector solution(N,0.0), solAn;
+	double time = N*dx*N*dx/4/lambda/lambda/(kappa);;
+
+	Vector solution(N,0.0), solAn(M);
+	// Initial temperature field
 	Vector Tinit(N, 273.15);
-	// Linear initial condition
-	//for (int i=0; i<N-1; i++) Tinit[i] = Ttop + i*(Tmelt-Ttop)/(N-1);
-	//StefanAnal1D(Tinit, N, dxInit, dt, ymInit);
-	// double lambda = findLambda(20.0, L, c, 0.3, 1e-15);
+	// /// Linear initial condition
+	// for (int i=0; i<N-1; i++) Tinit[i] = Ttop + i*(Tmelt-Ttop)/(N-1);
+	/// erf initial temp
 	StefanAnal1D(Tinit, N, dx, N*dx, time, lambda);
-	//for (int i=0;i<N-1; i++) Tinit[i] = Ttop + (Tmelt - Ttop)*erf(i*dx*sqrt(k/rho/c * dt))/erf(lambda);
+
+	size_t ymSize = 1;
 	Matrix ym(ymSize,Vector(2, 0.0));
 	Matrix ymAnal(ymSize,Vector(2, 0.0));
 	ym[0][0] = time;
 	ym[0][1] = N*dx;
 	ymAnal[0][0] = time;
 	//ymAnal[0][1] = lambda*sqrt(kappa/time)*time; // toto neni hezke
-	ymAnal[0][1] = N*dx; // toto neni hezke
+	ymAnal[0][1] = N*dx; // toto take neni hezke
 
 	dumpTempVector("initialCond.dat", Tinit, N, dx);
 
