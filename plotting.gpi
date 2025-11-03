@@ -14,11 +14,23 @@ set yrange reverse
 plot 'numSol.dat' u 2:1 w lp, 'analSol.dat' u 2:1, 'initialCond.dat' u 2:1
 
 unset output
-set output 'plot2.png'
+#set output 'plot2.png'
 #set key off
 
-file(n) = sprintf("tmp/dataset_%d.dat", n)
+#file(n) = sprintf("tmp/dataset_%d.dat", n)
 #plot for [i=0:4998:500] file(i) u 2:1 w l title sprintf("%d", i)
-plot for [i=0:10] file(i) u 2:1 w l title sprintf("%d", i)
+#plot for [i=0:10] file(i) u 2:1 w l title sprintf("%d", i)
+
+#unset output
+
+set output 'solidif_bound.png'
+
+unset yrange
+unset xrange
+set xlabel 't (s)'
+set ylabel 'ym (m)'
+plot 'ym.dat' w l lw 2, 'ymAnal.dat' w l
+
+unset output
 
 set term x11
