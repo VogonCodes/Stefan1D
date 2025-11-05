@@ -9,9 +9,10 @@ set ylabel "y"
 show xlabel
 show ylabel
 set yrange reverse
+set xrange [250:275]
 
 #plot 'numSol.dat' u 2:1 w lp, 'analSol.dat' u 2:1, 'initialCond.dat' u 2:1
-plot 'numSol.dat' u 2:1 w l title "numerical solution", 'initialCond.dat' u 2:1 w l title "initial condition"
+plot 'numSol.dat' u 2:1 w l title "numerical solution", 'initialCond.dat' u 2:1 w l title "initial condition", 'analSol.dat' u 2:1 w l title "analytical solution"
 
 unset output
 set output "timeseries.png"

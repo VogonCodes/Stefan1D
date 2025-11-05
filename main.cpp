@@ -74,7 +74,6 @@ double findLambda(double dT, double latentHeat, double heatCap, double initGuess
 	double ee, erflm;
 
 	f = lambda - RHS;
-	//cout << i << " " << lambda << " " << lambda_old << " " << f << " " << fprime <<  endl;
 	while (abs(f) > TOL) {
 		ee = exp(-lambda*lambda);
 		erflm = erf(lambda);
@@ -84,10 +83,6 @@ double findLambda(double dT, double latentHeat, double heatCap, double initGuess
 
 		lambda_old = lambda;
 		lambda -= f/fprime;
-
-		//i++;
-		//if (i<10) cout << i << " " << lambda << " " << lambda_old << " " << f << " " << fprime <<  endl;
-		//if (i % 10000000 ==0) cout << i << " " << lambda << " " << lambda_old << " " << f << " " << fprime <<  endl;
 	}
 
 	return lambda;
@@ -105,6 +100,30 @@ void StefanAnal1D(Vector& solution, size_t size, double dx, double ym, double ti
 		cout << eta << "," << erf(eta) << "," << erf(eta)/erfEtam << "," << deltaT*erf(eta)/erfEtam << endl;
 		solution[i] = Ttop + deltaT*erf(eta)/erfEtam;
 	}
+}
+
+void HeatEqAnal(Vector& solution, Vector Tinit, size_t size, double time, double dx) {
+	// tepelne jadro: G(x,t) = 1/sqrt(4*pi*kappa*t) * exp(-x^2/(4*kappa*t))*Heaviside(t)
+	// analyticke reseni: u(x,t) = convolution(G,u0)
+	int padding = 2*size;
+	size_t greenSize = 2*padding + 1;
+	size_t fullSize = greenSize + size - 1;
+	double x = 0.0;
+	Vector Green(greenSize, 0.0);
+	Vector fullSol(fullSize, 0.0);
+	for (int i=0; i<greenSize; i++) {
+		// cout << i << ": " << (i-static_cast<int>(size)) << " " << (i-size)*dx << " " << exp(-x*x/4/time) << " " << sqrt(4*M_PI*time) << endl;
+		x = (i - padding) * dx;
+		Green[i] = exp(-x*x/4/kappa/time) / sqrt(4*M_PI*kappa*time);
+	}
+	for (int i=0; i<size; i++) {
+		for (int j=0; j<greenSize; j++) {
+			fullSol[i+j] += Tinit[i]*Green[j]*dx;
+		}
+	}
+	for (int i = 0; i< size; i++) solution[i] = fullSol[i+padding];
+	dumpTempVector("green.dat", Green, greenSize, dx);
+	dumpTempVector("fullSol.dat", fullSol, fullSize, dx);
 }
 
 void HeatEq1D(Vector& numSol, Vector Tinit, size_t numSolSize, double maxTime, double& time, double dx) {
@@ -159,5 +178,6 @@ int main() {
 	//printVector(solAn,M);
 	printVector(solution, N);
 	dumpTempVector("numSol.dat", solution, N, dx);
-	//dumpTempVector("analSol.dat", solAn, N, dx);
+	HeatEqAnal(solution, Tinit, N, 5000.0, dx);
+	dumpTempVector("analSol.dat", solution, N, dx);
 }
