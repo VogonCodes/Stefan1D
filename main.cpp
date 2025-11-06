@@ -84,12 +84,7 @@ double findLambda(double dT, double latentHeat, double heatCap, double initGuess
 
 		lambda_old = lambda;
 		lambda -= f/fprime;
-
-		//i++;
-		//if (i<10) cout << i << " " << lambda << " " << lambda_old << " " << f << " " << fprime <<  endl;
-		//if (i % 10000000 ==0) cout << i << " " << lambda << " " << lambda_old << " " << f << " " << fprime <<  endl;
 	}
-
 	return lambda;
 }
 
@@ -97,13 +92,13 @@ void StefanAnal1D(Vector& solution, size_t size, double dx, double ym, double ti
 	double deltaT = Tmelt - Ttop;
 	double erfEtam = erf(lambdaAnal);
 	double eta;
-	cout << deltaT << "," << erfEtam << "," << Ttop << "," << time << endl;
 	for (int i=0; i<size; i++) {
 		// for y<ym: theta = erf(eta)/erf(lambda) -> T = T0 + (Tm-T0)*erf(y/(2*sqrt(kappa*t)))/erf(lambda)
 		if (i*dx > ym) solution[i] = Tmelt;
-		eta = i*dx / 2 / sqrt(kappa*time);
-		cout << eta << "," << erf(eta) << "," << erf(eta)/erfEtam << "," << deltaT*erf(eta)/erfEtam << endl;
-		solution[i] = Ttop + deltaT*erf(eta)/erfEtam;
+		else {
+			eta = i*dx / 2 / sqrt(kappa*time);
+			solution[i] = Ttop + deltaT*erf(eta)/erfEtam;
+		}
 	}
 }
 
@@ -142,27 +137,31 @@ bool updateGrid(Vector& solution, size_t& numSolSize, double ymCurrent, double& 
 	return false;
 }
 
-void solidify(Matrix& ymNumeric, Matrix& ymAnal, size_t& ymSize, double lambdaAnal, double time, double dt) {
+void solidify(Vector numSol, size_t solSize, Matrix& ymNumeric, Matrix& ymAnal, size_t& ymSize, double lambdaAnal, double time, double dt, double dx) {
 	double ym = ymNumeric[ymSize-1][1];
 	double lambda = ym / 2 / sqrt(kappa * time);
 
 	ymNumeric.push_back(Vector(2));
 	ymAnal.push_back(Vector(2));
+
 	ymNumeric[ymSize][0] = time;
-	ymNumeric[ymSize][1] = ym + lambda * sqrt(kappa/time)*dt;
+	//ymNumeric[ymSize][1] = ym + lambda * sqrt(kappa/time)*dt;
+	ymNumeric[ymSize][1] = ym + k/rho/L * (Tmelt - numSol[solSize-2])/dx * dt;
+
 	ymAnal[ymSize][0] = time;
 	ymAnal[ymSize][1] = ymAnal[ymSize-1][1]+lambdaAnal*sqrt(kappa/time)*dt;
+
 	ymSize++;
 }
 
-void StefanProblem1D(Vector& numSol, Vector& analSol, Vector Tinit, size_t& numSolSize, size_t& analSolSize, Matrix& ymNumeric, Matrix& ymAnal, size_t& ymSize, double maxTime, double& time, double& dx) {
+void StefanProblem1D(Vector& numSol, Vector& analSol, Vector Tinit, size_t& solSize, Matrix& ymNumeric, Matrix& ymAnal, size_t& ymSize, double maxTime, double& time, double& dx) {
 	double dt = dx*dx/2/kappa;
 	double maxdx = 0.001; // TODO
 	double TOL = 1e-14;
 	double lambda = ymNumeric[ymSize-1][1] / 2 / sqrt(kappa * time);
 	double lambdaAnal = findLambda(Tmelt-Ttop, L, c, 0.5, 1e-15);
 
-	Vector oldSol(numSolSize);
+	Vector oldSol(solSize);
 	oldSol = Tinit;
 	numSol = Tinit;
 
@@ -178,14 +177,15 @@ void StefanProblem1D(Vector& numSol, Vector& analSol, Vector Tinit, size_t& numS
 		dt = dx*dx/2/kappa;
 
 		// update solidification interface depth
-		solidify(ymNumeric, ymAnal, ymSize, lambdaAnal, time, dt);
+		solidify(numSol, solSize, ymNumeric, ymAnal, ymSize, lambdaAnal, time, dt, dx);
 
 		/* update grid :( */
-		if (updateGrid(oldSol,numSolSize, ymNumeric[ymSize-1][1], dx, maxdx)) numSol.resize(numSolSize);
+		if (updateGrid(oldSol,solSize, ymNumeric[ymSize-1][1], dx, maxdx)) numSol.resize(solSize); // analSol.resize(solSize);
 
 		// solve HEq for current time
-		//dumpTempVector("tmp/dataset_"+to_string(j)+".dat", numSol, numSolSize, dx);
-		centralDifferences(numSol, oldSol, numSolSize, kappa*dt/dx/dx);
+		//dumpTempVector("tmp/dataset_"+to_string(j)+".dat", numSol, solSize, dx);
+		centralDifferences(numSol, oldSol, solSize, kappa*dt/dx/dx);
+		//StefanAnal1D(analSol, solSize, dx, ymAnal[ymSize-1][1], time, lambdaAnal);
 
 		// update time
 		time += dt;
@@ -193,12 +193,9 @@ void StefanProblem1D(Vector& numSol, Vector& analSol, Vector Tinit, size_t& numS
 	}
 
 	// Analytical solution
-	analSol.resize(numSolSize);
-	analSolSize = numSolSize;
+	analSol.resize(solSize);
 
-	cout << lambda << endl;
-	cout << ymAnal[ymSize-1][1] << "," << dx << endl;
-	StefanAnal1D(analSol, analSolSize, dx, ymAnal[ymSize-1][1], time, lambdaAnal);
+	StefanAnal1D(analSol, solSize, dx, ymAnal[ymSize-1][1], time, lambdaAnal);
 }
 
 int main() {
@@ -228,7 +225,7 @@ int main() {
 
 	dumpTempVector("initialCond.dat", Tinit, N, dx);
 
-	StefanProblem1D(solution, solAn, Tinit, N, M, ym, ymAnal, ymSize, 1000.0, time, dx);
+	StefanProblem1D(solution, solAn, Tinit, N, ym, ymAnal, ymSize, 30000.0, time, dx);
 	printVector(solAn,M);
 	printVector(solution, N);
 	dumpTempVector("numSol.dat", solution, N, dx);
