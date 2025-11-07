@@ -55,6 +55,16 @@ void dumpTempVector(string filepath, Vector& vector, int size, double dx) {
 	}
 }
 
+Vector matVecMul(Matrix matrix, Vector vector, size_t M, size_t N) {
+	Vector result(M, 0.0);
+	for (int i=0; i<M; i++) {
+		for (int j=0; j<N; j++) {
+			result[i] += matrix[i][j]*vector[j];
+		}
+	}
+	return result;
+}
+
 void centralDifferences(Vector& y, Vector& y_old, size_t N, double a) {
 	// y(x_i, t_{n+1}) = y(x_{i+1}, t_n - delta t) + a * [ y(x_{i+1}, t_{n-1}) - 2*y(x_i, t_{n-1}) + y(x_{i-1}, t_{n-1}) ]
 	y[0] = y_old[0];
@@ -62,6 +72,94 @@ void centralDifferences(Vector& y, Vector& y_old, size_t N, double a) {
 	for (int i=1; i<N-1; i++) {
 		y[i] = y_old[i] + a*(y_old[i+1] - 2*y_old[i] + y_old[i-1]);
 	}
+}
+
+void thomas(Matrix T, Vector& x, Vector rhs, size_t N) {
+	// Thomas algorithm for solving a system of linear equations with tridiagonal matrix
+	//
+	// the problem:
+	// ( b0 c0  0  0 0     )             ( d0 )
+	// ( a1 b1 c1  0 0     )             ( d1 )
+	// (  0 a2 b2 c2 0 ... ) * x = RHS = ( d2 )
+	// (  .                )             ( .  )
+	// (  .                )             ( .  )
+	// (  .                )             ( .  )
+	// 
+	//     (  0 a1 a2 ... aN )
+	// T = ( b0 b1 b2 ... bN )
+	//     ( c0 c1 c2 ...  0 )
+	
+	// forward run: sort-of-Gauss
+	// ( b0 c0  0  0 0     )    (  1 c'0   0  0   0     )
+    // ( a1 b1 c1  0 0     )    (  0  1  c'1  0   0     )        (  0   0   0  ...  0 )
+    // (  0 a2 b2 c2 0 ... ) -> (  0  0   1  c'2  0 ... ) -> T = (  1   1   1  ...  1 )
+    // (  .                )    (  .          .         )        ( c'0 c'1 c'2 ...  0 )
+    // (  .                )    (  .              .     )
+    // (  .                )    (  .                 .  )
+
+	T[2][0] = T[2][0]/T[1][0]; // c0' = c0/b0
+	rhs[0] = rhs[0]/T[1][0]; // d0' = d0/b0
+	for (int i=1; i<N-1; i++) {
+		// ci' = ci/(bi - ai*c(i-1)')
+		T[2][i] /= T[1][i]-T[0][i]*T[2][i-1];
+		// di' = (di - ai*d(i-1)')/(bi - ai*c(i-1)')
+		rhs[i] = (rhs[i] - T[0][i]*rhs[i-1]) / (T[1][i] - T[0][i]*T[2][i-1]);
+	}
+
+	// back substitution
+	x[N-1] = rhs[N-1];
+	for (int i=N-2; i>=0; i--) {
+		x[i] = rhs[i] - T[2][i]*rhs[i+1];
+	}
+	cout << endl << "rhs post-thomas: ";
+	printVector(rhs, N);
+	cout << endl;
+	printMatrix(T, N, N);
+	cout << endl;
+	printVector(x, N);
+	cout << endl;
+}
+
+void cranckNicholson(Vector& y, Vector& yOld, size_t N, double a) {
+	// build matrices
+	Matrix A(3,Vector(N,0.0)), B(3, Vector(N, 0.0));
+	B[1][0] = 1.0;
+	B[1][N-1] = 1.0;
+	A[1][0] = 1.0;
+	A[1][N-1] = 1.0;
+	for (int i=1; i<N-1; i++) {
+		A[1][i] = 2+2*a;
+		B[1][i] = 2-2*a;
+
+		A[0][i] = -a;
+		B[0][i] = a;
+
+		A[2][i] = -a;
+		B[2][i] = a;
+	}
+	printMatrix(A, N, N);
+
+	// build rhs
+	Vector rhs(N, 0.0);
+	int minJ, maxJ;
+	// rhs[0] = Ttop;
+	//
+	// rhs[N-1] = Tmelt;
+	for (int i=0; i<N; i++) {
+		minJ = max(i-1, 0);
+		maxJ = min(i+2,int(N));
+		for (int j=minJ;j<maxJ;j++) {
+			rhs[i] += B[j-i+1][i]*yOld[j];
+			if (i==0) cout << i << ", " << j << ", " << j-i+1 << ", " << B[j-i+1][i] << ", " << yOld[j] << ", " << B[j-i+1][i]*yOld[j] << ", " << rhs[i]<< endl;
+		}
+	}
+	cout << endl;
+	printVector(yOld, N);
+	cout << endl << "rhs pre-thomas:";
+	printVector(rhs, N);
+
+	// solve system of linear equations
+	thomas(A, y, rhs, N);
 }
 
 double findLambda(double dT, double latentHeat, double heatCap, double initGuess, double TOL) {
@@ -175,6 +273,8 @@ void StefanProblem1D(Vector& numSol, Vector& analSol, Vector Tinit, size_t& solS
 		// update timestep
 		// if (dt > dx*dx/2/kappa) dt = dx*dx/2/kappa;
 		dt = dx*dx/2/kappa;
+		cout << "dx=" << dx << endl;
+		dt = 0.1;
 
 		// update solidification interface depth
 		solidify(numSol, solSize, ymNumeric, ymAnal, ymSize, lambdaAnal, time, dt, dx);
@@ -184,7 +284,9 @@ void StefanProblem1D(Vector& numSol, Vector& analSol, Vector Tinit, size_t& solS
 
 		// solve HEq for current time
 		//dumpTempVector("tmp/dataset_"+to_string(j)+".dat", numSol, solSize, dx);
-		centralDifferences(numSol, oldSol, solSize, kappa*dt/dx/dx);
+		//centralDifferences(numSol, oldSol, solSize, kappa*dt/dx/dx);
+		cout << "t=" << time << endl;
+		cranckNicholson(numSol, oldSol, solSize, kappa*dt/dx/dx);
 		//StefanAnal1D(analSol, solSize, dx, ymAnal[ymSize-1][1], time, lambdaAnal);
 
 		// update time
@@ -201,7 +303,7 @@ void StefanProblem1D(Vector& numSol, Vector& analSol, Vector Tinit, size_t& solS
 int main() {
 	size_t N = 3;
 	size_t M = 0;
-	double dx = 0.0001;
+	double dx = 0.001;
 
 	double lambda = findLambda(Tmelt-Ttop, L, c, 0.5, 1e-15);
 	double time = N*dx*N*dx/4/lambda/lambda/(kappa);;
@@ -225,8 +327,9 @@ int main() {
 
 	dumpTempVector("initialCond.dat", Tinit, N, dx);
 
-	StefanProblem1D(solution, solAn, Tinit, N, ym, ymAnal, ymSize, 30000.0, time, dx);
+	StefanProblem1D(solution, solAn, Tinit, N, ym, ymAnal, ymSize, 1000.0, time, dx);
 	printVector(solAn,M);
+	cout << endl;
 	printVector(solution, N);
 	dumpTempVector("numSol.dat", solution, N, dx);
 	dumpTempVector("analSol.dat", solAn, N, dx);
