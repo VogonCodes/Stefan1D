@@ -104,20 +104,14 @@ Vector thomas(Vector& a, Vector& b, Vector& c, Vector& rhs, size_t N) {
 		// ci' = ci/(bi - ai*c(i-1)')
 		c[i] /= b[i]-a[i]*c[i-1];
 		// di' = (di - ai*d(i-1)')/(bi - ai*c(i-1)')
-		cout << i << ": rhs["<<i<<"] = (" << rhs[i] <<" - " << a[i] << "*" << rhs[i-1] << ") / (" << b[i] << " - " << a[i] << "*" << c[i-1] << ") = ";
 		rhs[i] = (rhs[i] - a[i]*rhs[i-1]) / (b[i] - a[i]*c[i-1]);
-		cout << rhs[i] << endl;
 	}
 
 	// back substitution
-	cout << "N=" <<N << endl;
 	Vector x(N, 0.0);
 	// !!! N refers to the size of rhs, which is Nx-2 -- it lacks boundary nodes !!!
 	x[N-1] = rhs[N-1];
-	for (int i=N-2; i>=0; --i) {
-		x[i] = rhs[i] - c[i]*x[i+1];
-		cout << i << ": x["<<i<<"] = " << rhs[i] << " - " <<  c[i] << "*" <<x[i+1] << " = " << x[i]<< endl;
-	}
+	for (int i=N-2; i>=0; --i) x[i] = rhs[i] - c[i]*x[i+1];
 	return x;
 }
 
@@ -126,11 +120,10 @@ void crankNicholson(Vector& y, Vector& yOld, size_t N, double mu) {
 	size_t M = N-2;
 	Vector rhs(M, 0.0);
 	for (size_t i=1; i<N-1; i++) {
-		cout << i << endl;
 		rhs[i-1] = mu*yOld[i-1] + (2-2*mu)*yOld[i] + mu*yOld[i+1];
 	}
-	// rhs[0] += Ttop;
-	// rhs[M-1] += Tmelt;
+	rhs[0] += mu*Ttop;
+	rhs[M-1] += mu*Tmelt;
 
 	// build matrix
 	Vector a(M,0.0), b(M, 0.0), c(M,0.0);
@@ -139,27 +132,12 @@ void crankNicholson(Vector& y, Vector& yOld, size_t N, double mu) {
 		if (i>0) a[i] = -mu;
 		if (i<M-1) c[i] = -mu;
 	}
-	printVector(a,M);
-	printVector(b, M);
-	printVector(c, M);
-	printVector(yOld, N);
-	cout << endl << "rhs pre-thomas:";
-	printVector(rhs, M);
 
 	// solve system of linear equations
 	Vector intSol = thomas(a, b, c, rhs, M);
 	for (size_t i=0; i<M; i++) y[i+1] = intSol[i];
 	y[0] = Ttop;
 	y[N-1] = Tmelt;
-
-
-	cout << endl << "rhs post-thomas: ";
-	printVector(rhs, N);
-	printVector(a,M);
-	printVector(b, M);
-	printVector(c, M);
-	cout << endl;
-	printVector(y,N);
 }
 
 double findLambda(double dT, double latentHeat, double heatCap, double initGuess, double TOL) {
@@ -172,7 +150,6 @@ double findLambda(double dT, double latentHeat, double heatCap, double initGuess
 	double ee, erflm;
 
 	f = lambda - RHS;
-	//cout << i << " " << lambda << " " << lambda_old << " " << f << " " << fprime <<  endl;
 	while (abs(f) > TOL) {
 		ee = exp(-lambda*lambda);
 		erflm = erf(lambda);
@@ -252,7 +229,7 @@ void solidify(Vector& numSol, size_t solSize, Matrix& ymNumeric, Matrix& ymAnal,
 	ymSize++;
 }
 
-void StefanProblem1D(Vector& numSol, Vector& analSol, Vector& Tinit, size_t& solSize, Matrix& ymNumeric, Matrix& ymAnal, size_t& ymSize, double maxTime, double& time, double& dx) {
+void StefanProblem1D(Vector& numSol, Vector& analSol, Vector& Tinit, size_t& solSize, Matrix& ymNumeric, Matrix& ymAnal, size_t& ymSize, double maxTime, double& time, double& dx, unsigned int solver=0) {
 	double dt = dx*dx/2/kappa;
 	double maxdx = 0.001; // TODO
 	double TOL = 1e-14;
@@ -267,15 +244,12 @@ void StefanProblem1D(Vector& numSol, Vector& analSol, Vector& Tinit, size_t& sol
 	time += dt;
 	int j = static_cast<int>(ymSize);
 	while (time < maxTime) {
-		cout << "-------------------" << endl;
 		// update old values
 		oldSol = numSol;
 
 		// update timestep
 		// if (dt > dx*dx/2/kappa) dt = dx*dx/2/kappa;
 		dt = dx*dx/2/kappa;
-		cout << "dx=" << dx << endl;
-		//dt = 0.1;
 
 		// update solidification interface depth
 		solidify(numSol, solSize, ymNumeric, ymAnal, ymSize, lambdaAnal, time, dt, dx);
@@ -285,10 +259,16 @@ void StefanProblem1D(Vector& numSol, Vector& analSol, Vector& Tinit, size_t& sol
 
 		// solve HEq for current time
 		//dumpTempVector("tmp/dataset_"+to_string(j)+".dat", numSol, solSize, dx);
-		//centralDifferences(numSol, oldSol, solSize, kappa*dt/dx/dx);
-		cout << "t=" << time << endl;
-		crankNicholson(numSol, oldSol, solSize, kappa*dt/dx/dx);
-		//StefanAnal1D(analSol, solSize, dx, ymAnal[ymSize-1][1], time, lambdaAnal);
+		switch(solver) {
+			case 1:
+				crankNicholson(numSol, oldSol, solSize, kappa*dt/dx/dx);
+				break;
+			case 0:
+			default:
+				centralDifferences(numSol, oldSol, solSize, kappa*dt/dx/dx);
+				break;
+
+		}
 
 		// update time
 		time += dt;
@@ -304,7 +284,7 @@ void StefanProblem1D(Vector& numSol, Vector& analSol, Vector& Tinit, size_t& sol
 int main() {
 	size_t N = 3;
 	size_t M = 0;
-	double dx = 0.001;
+	double dx = 0.01;
 
 	double lambda = findLambda(Tmelt-Ttop, L, c, 0.5, 1e-15);
 	double time = N*dx*N*dx/4/lambda/lambda/(kappa);;
@@ -328,7 +308,7 @@ int main() {
 
 	dumpTempVector("initialCond.dat", Tinit, N, dx);
 
-	StefanProblem1D(solution, solAn, Tinit, N, ym, ymAnal, ymSize, 1000.0, time, dx);
+	StefanProblem1D(solution, solAn, Tinit, N, ym, ymAnal, ymSize, 1000.0, time, dx, 1);
 	printVector(solAn,M);
 	cout << endl;
 	printVector(solution, N);
