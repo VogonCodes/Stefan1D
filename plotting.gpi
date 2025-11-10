@@ -11,7 +11,7 @@ show xlabel
 show ylabel
 set yrange reverse
 
-plot 'numSol.dat' u 2:1 w l, 'analSol.dat' u 2:1 w l, 'initialCond.dat' u 2:1
+plot 'numSol.dat' u 2:1 w lp, 'analSol.dat' u 2:1 w l, 'initialCond.dat' u 2:1
 
 unset output
 #set output 'plot2.png'
@@ -29,14 +29,17 @@ unset yrange
 unset xrange
 set xlabel 't (h)'
 set ylabel 'ym (m)'
-plot 'ym.dat' u ($1/3600):2 w l lw 1, 'ymAnal.dat' u ($1/3600):2 w l
+set key left top
+plot 'ym.dat' u ($1/3600):2 w l lw 1 title 'numerical solution',\
+ 'ymAnal.dat' u ($1/3600):2 w l title 'analytical solution'
 
 unset output
 
 set output 'etam.png'
 set ylabel 'etam'
 kappa = 2.0/1.0e3/4.0e3
-plot 'ym.dat' skip 5 u ($1/3600):($2/2/sqrt($1*kappa)) w l lw 2, 'ymAnal.dat' skip 5 u ($1/3600):($2/2/sqrt($1*kappa)) w l
+plot 'ym.dat' skip 5 u ($1/3600):($2/2/sqrt($1*kappa)) w l lw 2 title 'numerical solution',\
+ 'ymAnal.dat' skip 5 u ($1/3600):($2/2/sqrt($1*kappa)) w l title 'analytical solution'
 unset output
 
 set term x11

@@ -4,6 +4,7 @@
 #include <string>
 #include <cmath>
 #include <cstdio>
+#include <chrono>
 
 using namespace std;
 
@@ -16,6 +17,9 @@ const double c = 4.0e3; // J*(kg*K)
 const double rho = 1.0e3; // kg/m^3
 const double L = 320.0e3; // J/kg
 const double kappa = k/c/rho;
+
+const double CFL = 0.5;
+const double maxdx = 0.001; // TODO
 
 const double Ttop = 253.15; // K; = -20 C
 const double Tbot = 273.15; // K; =  0C
@@ -213,25 +217,20 @@ bool updateGrid(Vector& solution, size_t& numSolSize, double ymCurrent, double& 
 }
 
 void solidify(Vector& numSol, size_t solSize, Matrix& ymNumeric, Matrix& ymAnal, size_t& ymSize, double lambdaAnal, double time, double dt, double dx) {
-	double ym = ymNumeric[ymSize-1][1];
-	double lambda = ym / 2 / sqrt(kappa * time);
-
 	ymNumeric.push_back(Vector(2));
 	ymAnal.push_back(Vector(2));
 
 	ymNumeric[ymSize][0] = time;
-	//ymNumeric[ymSize][1] = ym + lambda * sqrt(kappa/time)*dt;
-	ymNumeric[ymSize][1] = ym + k/rho/L * (Tmelt - numSol[solSize-2])/dx * dt;
+	ymNumeric[ymSize][1] = ymNumeric[ymSize-1][1] + k/rho/L * (numSol[solSize-1] - numSol[solSize-2])/dx * dt;
 
 	ymAnal[ymSize][0] = time;
-	ymAnal[ymSize][1] = ymAnal[ymSize-1][1]+lambdaAnal*sqrt(kappa/time)*dt;
+	ymAnal[ymSize][1] = ymAnal[ymSize-1][1] + lambdaAnal * sqrt(kappa/time) * dt;
 
 	ymSize++;
 }
 
 void StefanProblem1D(Vector& numSol, Vector& analSol, Vector& Tinit, size_t& solSize, Matrix& ymNumeric, Matrix& ymAnal, size_t& ymSize, double maxTime, double& time, double& dx, unsigned int solver=0) {
 	double dt = dx*dx/2/kappa;
-	double maxdx = 0.001; // TODO
 	double TOL = 1e-14;
 	double lambda = ymNumeric[ymSize-1][1] / 2 / sqrt(kappa * time);
 	double lambdaAnal = findLambda(Tmelt-Ttop, L, c, 0.5, 1e-15);
@@ -241,15 +240,20 @@ void StefanProblem1D(Vector& numSol, Vector& analSol, Vector& Tinit, size_t& sol
 	numSol = Tinit;
 
 	// Numerical solution + solidification interface depth
-	time += dt;
-	int j = static_cast<int>(ymSize);
 	while (time < maxTime) {
 		// update old values
 		oldSol = numSol;
 
+		// update time
+		time += dt;
+		if (time>maxTime) {
+			dt = maxTime - time;
+			time = maxTime;
+		}
+
 		// update timestep
 		// if (dt > dx*dx/2/kappa) dt = dx*dx/2/kappa;
-		dt = dx*dx/2/kappa;
+		dt = dx*dx/kappa*CFL/2;
 
 		// update solidification interface depth
 		solidify(numSol, solSize, ymNumeric, ymAnal, ymSize, lambdaAnal, time, dt, dx);
@@ -267,12 +271,7 @@ void StefanProblem1D(Vector& numSol, Vector& analSol, Vector& Tinit, size_t& sol
 			default:
 				centralDifferences(numSol, oldSol, solSize, kappa*dt/dx/dx);
 				break;
-
 		}
-
-		// update time
-		time += dt;
-		j++;
 	}
 
 	// Analytical solution
@@ -282,38 +281,43 @@ void StefanProblem1D(Vector& numSol, Vector& analSol, Vector& Tinit, size_t& sol
 }
 
 int main() {
-	size_t N = 3;
+	auto start = chrono::high_resolution_clock::now();
+	size_t N = 5;
 	size_t M = 0;
-	double dx = 0.01;
-
+	double dx = 0.001;
+	double time;
 	double lambda = findLambda(Tmelt-Ttop, L, c, 0.5, 1e-15);
-	double time = N*dx*N*dx/4/lambda/lambda/(kappa);;
-
-	Vector solution(N,0.0), solAn(M);
-	// Initial temperature field
-	Vector Tinit(N, 273.15);
-	// /// Linear initial condition
-	// for (size_t i=0; i<N-1; i++) Tinit[i] = Ttop + i*(Tmelt-Ttop)/(N-1);
-	/// erf initial temp
-	StefanAnal1D(Tinit, N, dx, N*dx, time, lambda);
 
 	size_t ymSize = 1;
 	Matrix ym(ymSize,Vector(2, 0.0));
 	Matrix ymAnal(ymSize,Vector(2, 0.0));
+
+	Vector Tinit(N, 273.15);
+	Vector solution(N,0.0), solAn(M);
+
+	/* Initial strength of solidified material */
+	ym[0][1] = (N-1)*dx;
+	ymAnal[0][1] = (N-1)*dx;
+
+	time = (N-1)*dx*(N-1)*dx/4/lambda/lambda/kappa;
 	ym[0][0] = time;
-	ym[0][1] = N*dx;
 	ymAnal[0][0] = time;
-	//ymAnal[0][1] = lambda*sqrt(kappa/time)*time; // toto neni hezke
-	ymAnal[0][1] = N*dx; // toto take neni hezke
+
+	/* Initial temperature field */
+	// /// Linear initial condition
+	// for (size_t i=0; i<N-1; i++) Tinit[i] = Ttop + i*(Tmelt-Ttop)/(N-1);
+	/// erf initial temp
+	StefanAnal1D(Tinit, N, dx, ym[0][1], time, lambda);
 
 	dumpTempVector("initialCond.dat", Tinit, N, dx);
 
-	StefanProblem1D(solution, solAn, Tinit, N, ym, ymAnal, ymSize, 1000.0, time, dx, 1);
-	printVector(solAn,M);
-	cout << endl;
-	printVector(solution, N);
+	StefanProblem1D(solution, solAn, Tinit, N, ym, ymAnal, ymSize, 3000.0, time, dx, 1);
 	dumpTempVector("numSol.dat", solution, N, dx);
 	dumpTempVector("analSol.dat", solAn, N, dx);
 	dumpMatrix("ym.dat", ym, ymSize, 2);
 	dumpMatrix("ymAnal.dat", ymAnal, ymSize, 2);
+
+	auto stop = chrono::high_resolution_clock::now();
+	auto duration = chrono::duration_cast<chrono::milliseconds>(stop - start);
+	cout << "finished after " << duration.count()/1e3 << " s" << endl;
 }
