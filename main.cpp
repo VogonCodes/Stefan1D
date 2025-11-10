@@ -59,16 +59,6 @@ void dumpTempVector(string filepath, Vector& vector, int size, double dx) {
 	}
 }
 
-Vector matVecMul(Matrix matrix, Vector vector, size_t M, size_t N) {
-	Vector result(M, 0.0);
-	for (size_t i=0; i<M; i++) {
-		for (int j=0; j<N; j++) {
-			result[i] += matrix[i][j]*vector[j];
-		}
-	}
-	return result;
-}
-
 void centralDifferences(Vector& y, Vector& y_old, size_t N, double a) {
 	// y(x_i, t_{n+1}) = y(x_{i+1}, t_n - delta t) + a * [ y(x_{i+1}, t_{n-1}) - 2*y(x_i, t_{n-1}) + y(x_{i-1}, t_{n-1}) ]
 	y[0] = y_old[0];
@@ -153,7 +143,7 @@ double findLambda(double dT, double latentHeat, double heatCap, double initGuess
 	double f,fprime;
 	double ee, erflm;
 
-	f = lambda - RHS;
+	f=2*TOL;
 	while (abs(f) > TOL) {
 		ee = exp(-lambda*lambda);
 		erflm = erf(lambda);
@@ -187,10 +177,10 @@ bool updateGrid(Vector& solution, size_t& numSolSize, double ymCurrent, double& 
 	double TOL = 1e-14;
 	Vector tmp;
 
-	if (ymCurrent/numSolSize > maxdx) numSolSize++;
+	if (ymCurrent/(numSolSize-1) > maxdx) numSolSize++;
 	// update spatial step -- equidistant grid
-	dx = ymCurrent/numSolSize;
-	// resize the vector
+	dx = ymCurrent/(numSolSize-1);
+	// resize the temporary vector
 	tmp.resize(numSolSize);
 	tmp[numSolSize-1] = Tmelt;
 	tmp[0] = Ttop;
@@ -272,6 +262,7 @@ void StefanProblem1D(Vector& numSol, Vector& analSol, Vector& Tinit, size_t& sol
 				centralDifferences(numSol, oldSol, solSize, kappa*dt/dx/dx);
 				break;
 		}
+
 	}
 
 	// Analytical solution
@@ -311,7 +302,7 @@ int main() {
 
 	dumpTempVector("initialCond.dat", Tinit, N, dx);
 
-	StefanProblem1D(solution, solAn, Tinit, N, ym, ymAnal, ymSize, 3000.0, time, dx, 1);
+	StefanProblem1D(solution, solAn, Tinit, N, ym, ymAnal, ymSize, 3*24*3600.0, time, dx, 1);
 	dumpTempVector("numSol.dat", solution, N, dx);
 	dumpTempVector("analSol.dat", solAn, N, dx);
 	dumpMatrix("ym.dat", ym, ymSize, 2);
